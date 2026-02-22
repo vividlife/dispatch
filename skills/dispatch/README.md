@@ -79,6 +79,14 @@ agents:
 
 The dispatcher scans your prompt for agent names from the config and routes accordingly.
 
+## Asking questions
+
+Workers can ask clarification questions **without exiting**. When a worker hits a blocker, it writes a question to an IPC file. A sentinel process detects it and notifies the dispatcher, which surfaces the question to you. After you answer, the worker picks up where it left off — with full context preserved.
+
+If the answer doesn't arrive within ~3 minutes (e.g., you stepped away), the worker falls back to the original behavior: saves its context, marks the item `[?]`, and exits. When you return and answer, a new worker spawns with the saved context.
+
+This is automatic — you don't need to configure anything.
+
 ## Plan file markers
 
 Workers update the plan file as they progress:
@@ -87,7 +95,7 @@ Workers update the plan file as they progress:
 |--------|---------|
 | `[ ]`  | Pending |
 | `[x]`  | Done    |
-| `[?]`  | Blocked — needs human input |
+| `[?]`  | Blocked — worker timed out waiting for an answer and exited |
 | `[!]`  | Error   |
 
 ## Checking progress

@@ -17,8 +17,17 @@ Claude Code (dispatcher session)
   |
   |- Reads ~/.dispatch/config.yaml (or auto-detects available CLIs)
   |- Creates plan file (.dispatch/tasks/<id>/plan.md) with checklist
+  |- Creates IPC directory (.dispatch/tasks/<id>/ipc/)
   |- Writes wrapper script to /tmp/worker--<id>.sh, spawns it as background task
+  |- Writes sentinel script to /tmp/sentinel--<id>.sh, spawns it as background task
   |- Worker checks off items in plan.md as it completes them
+  |- If worker hits a blocker:
+  |    |- Worker writes question to ipc/001.question (atomic write)
+  |    |- Sentinel detects question, exits → triggers <task-notification>
+  |    |- Dispatcher reads question, asks user, writes ipc/001.answer
+  |    |- Dispatcher respawns sentinel
+  |    |- Worker detects answer, writes 001.done, continues working
+  |    |- Timeout fallback: worker dumps context.md, marks [?], exits
   |- Dispatcher reads plan.md to track progress (on status request or task-notification)
   |- Handles blocked ([?]) and error ([!]) states
   |- Reports results to user
@@ -31,6 +40,8 @@ Claude Code (dispatcher session)
 - `skills/dispatch/references/config-example.yaml` - Example config users copy to `~/.dispatch/config.yaml`.
 - `.dispatch/tasks/<task-id>/plan.md` - Checklist-based plan file. The worker updates it in place, checking off items as they complete. Single source of truth for task progress.
 - `.dispatch/tasks/<task-id>/output.md` - Output artifact produced by the worker (findings, summaries, etc.).
+- `.dispatch/tasks/<task-id>/ipc/` - IPC directory for bidirectional worker-dispatcher communication. Contains sequence-numbered question/answer/done files.
+- `.dispatch/tasks/<task-id>/context.md` - Context dump written by the worker when IPC times out, preserving state for the next worker.
 
 ## Config System
 
@@ -62,6 +73,7 @@ agents:
 - **Explicit routing**: Before acting, the dispatcher classifies the prompt as either a config request (mentions "config", "add agent", "change model", etc.) or a task request. Config requests are handled inline without spawning a worker; task requests proceed through the normal plan-and-dispatch flow.
 - **Natural language config editing**: Users can say "add harvey to my config" or "switch to gpt-5" and the dispatcher reads, edits, and writes `~/.dispatch/config.yaml` directly — no special commands needed.
 - **Readable status bar via wrapper script**: Workers are launched through a `/tmp/worker--<task-id>.sh` wrapper so Claude Code's status bar shows a human-readable label instead of the raw agent command.
+- **Sentinel-based IPC**: A lightweight sentinel script polls the IPC directory for unanswered questions. When it finds one, it exits — triggering a `<task-notification>` that alerts the dispatcher. This lets workers ask questions without exiting, preserving their full in-memory context. Falls back to `[?]` + `context.md` on timeout.
 
 ## `.dispatch/` Directory Structure
 
@@ -71,6 +83,11 @@ agents:
     <task-id>/
       plan.md      # Checklist updated by worker as it progresses
       output.md    # Final output artifact (report, summary, etc.)
+      context.md   # Worker context dump on IPC timeout (optional)
+      ipc/         # Bidirectional IPC files
+        001.question  # Worker's question (plain text)
+        001.answer    # Dispatcher's answer (plain text)
+        001.done      # Worker's acknowledgment
   feedback/
     events.jsonl   # Feedback log written by /dispatch-feedback
 ```
