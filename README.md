@@ -1,31 +1,53 @@
 # /dispatch
 
-**Stop juggling terminals.** One command dispatches work to background AI agents — Claude, GPT, Gemini — while you keep coding.
+**You don't need 6 terminals.** You need one session that delegates.
+
+`/dispatch` turns your AI coding session into a command center. You describe work, it plans a checklist, fans out to background workers — Claude, GPT, Gemini — and tracks progress. You stay in one clean session. Workers do the heavy lifting in isolated contexts.
 
 <p align="center">
-  <img src="skills/dispatch/assets/architecture.svg" alt="dispatch architecture: you run /dispatch, it plans the task, fans out to parallel workers (Claude, GPT, Gemini), and reports results back" width="700" />
+  <img src="skills/dispatch/assets/before-after.svg" alt="Before: developer juggling 6 terminal tabs with separate AI agents, arrows crossing everywhere. After: one session delegates to a dispatcher that fans out to workers with a clean feedback loop." width="900" />
 </p>
 
 ```
 /dispatch "do a security review of this project"
 ```
 
-The dispatcher plans the task, spawns background workers, and reports back. You never leave your session.
+---
+
+## Why dispatch
+
+### Your main session stays lean
+
+The dispatcher **never does the actual work**. It plans, delegates, and tracks. The heavy reasoning — code review, refactoring, test writing — happens in isolated worker contexts. Your main session's context window is preserved for orchestration, not consumed by implementation details.
+
+### Workers ask questions back
+
+This is the part most agent orchestrators get wrong. When a `/dispatch` worker gets stuck, it doesn't silently fail or hallucinate. It **asks a clarifying question** — the dispatcher surfaces it to you, you answer, and the worker continues **without losing context**. No restart, no re-explaining, no lost work.
+
+```
+Worker is asking: "requirements.txt doesn't exist. What feature should I implement?"
+> Add a /health endpoint that returns JSON with uptime and version.
+
+Answer sent. Worker is continuing.
+```
+
+### Any model, one interface
+
+Mix models per task. Claude for deep reasoning, GPT for broad generation, Gemini for speed. Reference any model by name — if it's not in your config, `/dispatch` auto-discovers and adds it.
+
+```
+/dispatch "use gemini-3.1-pro to review the API layer"
+```
 
 ---
 
+> **Requires [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Cursor](https://docs.cursor.com/) as your host session.** Dispatch is a skill that runs _inside_ Claude Code or Cursor — the host plans tasks and spawns workers. Other CLIs like [Codex](https://github.com/openai/codex) work as **workers only** (background agents that execute subtasks). You cannot use dispatch with Codex alone.
+
 ## Install
 
-**User-level** (available in all your projects):
-
 ```bash
-npx skills add bassimeledath/dispatch -g
-```
-
-**Project-level** (shared with your team via version control):
-
-```bash
-npx skills add bassimeledath/dispatch
+npx skills add bassimeledath/dispatch -g     # user-level (all projects)
+npx skills add bassimeledath/dispatch        # project-level (team-shared)
 ```
 
 ## How it works
@@ -33,9 +55,8 @@ npx skills add bassimeledath/dispatch
 1. You run `/dispatch "task description"`
 2. A checklist plan is created at `.dispatch/tasks/<id>/plan.md`
 3. A background worker picks it up and checks off items as it goes
-4. You get results when it's done — or ask for status anytime
-
-Workers can use **any model** you have access to. Mix Claude for deep reasoning, GPT for broad tasks, Gemini for speed — all from one interface.
+4. If the worker has a question, it asks — you answer — it continues
+5. You get results when it's done, or ask for status anytime
 
 ## Setup
 
@@ -78,16 +99,15 @@ aliases:
       You are a security-focused reviewer. Prioritize OWASP Top 10.
 ```
 
-## Worker IPC
-
-Workers can ask clarification questions **without exiting**. When a worker hits a blocker, it surfaces the question to you. After you answer, the worker picks up where it left off with full context preserved.
-
 ## Prerequisites
 
-At least one AI CLI backend:
+**Host (required — at least one):**
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`)
-- [Cursor CLI](https://docs.cursor.com/) (`agent`)
+- [Cursor](https://docs.cursor.com/) (`agent`)
+
+**Workers (optional — for multi-model dispatch):**
 - [Codex CLI](https://github.com/openai/codex) (`codex`)
+- Any CLI that accepts a prompt argument
 
 ## License
 

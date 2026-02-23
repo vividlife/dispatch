@@ -1,16 +1,45 @@
 # /dispatch
 
-**Stop juggling terminals.** One command dispatches work to background AI agents — Claude, GPT, Gemini — while you keep coding.
+**You don't need 6 terminals.** You need one session that delegates.
+
+`/dispatch` turns your AI coding session into a command center. You describe work, it plans a checklist, fans out to background workers — Claude, GPT, Gemini — and tracks progress. You stay in one clean session. Workers do the heavy lifting in isolated contexts.
 
 <p align="center">
-  <img src="assets/architecture.svg" alt="dispatch architecture: you run /dispatch, it plans the task, fans out to parallel workers (Claude, GPT, Gemini), and reports results back" width="700" />
+  <img src="assets/before-after.svg" alt="Before: developer juggling 6 terminal tabs with separate AI agents, arrows crossing everywhere. After: one session delegates to a dispatcher that fans out to workers with a clean feedback loop." width="900" />
 </p>
 
 ```
 /dispatch "do a security review of this project"
 ```
 
-The dispatcher plans the task, spawns background workers, and reports back. You never leave your session.
+> **Host requirement:** Dispatch runs inside **Claude Code** or **Cursor** — one of these must be your active session. Other CLIs like Codex work as **workers only** (they execute subtasks in the background). Dispatch cannot run standalone with Codex or other worker-only CLIs.
+
+---
+
+## Why dispatch
+
+### Your main session stays lean
+
+The dispatcher **never does the actual work**. It plans, delegates, and tracks. The heavy reasoning — code review, refactoring, test writing — happens in isolated worker contexts. Your main session's context window is preserved for orchestration, not consumed by implementation details.
+
+### Workers ask questions back
+
+This is the part most agent orchestrators get wrong. When a `/dispatch` worker gets stuck, it doesn't silently fail or hallucinate. It **asks a clarifying question** — the dispatcher surfaces it to you, you answer, and the worker continues **without losing context**. No restart, no re-explaining, no lost work.
+
+```
+Worker is asking: "requirements.txt doesn't exist. What feature should I implement?"
+> Add a /health endpoint that returns JSON with uptime and version.
+
+Answer sent. Worker is continuing.
+```
+
+### Any model, one interface
+
+Mix models per task. Claude for deep reasoning, GPT for broad generation, Gemini for speed. Reference any model by name — if it's not in your config, `/dispatch` auto-discovers and adds it.
+
+```
+/dispatch "use gemini-3.1-pro to review the API layer"
+```
 
 ---
 
@@ -19,9 +48,8 @@ The dispatcher plans the task, spawns background workers, and reports back. You 
 1. You run `/dispatch "task description"`
 2. A checklist plan is created at `.dispatch/tasks/<id>/plan.md`
 3. A background worker picks it up and checks off items as it goes
-4. You get results when it's done — or ask for status anytime
-
-Workers can use **any model** you have access to. Mix Claude for deep reasoning, GPT for broad tasks, Gemini for speed — all from one interface.
+4. If the worker has a question, it asks — you answer — it continues
+5. You get results when it's done, or ask for status anytime
 
 ## Setup
 
@@ -41,6 +69,9 @@ backends:
   cursor:
     command: >
       agent -p --force --workspace "$(pwd)"
+  codex:
+    command: >
+      codex exec --full-auto -C "$(pwd)"
 ```
 
 **Models** — one line each, mapped to a backend:
@@ -73,10 +104,6 @@ Reference any model by name — if it's not in your config, `/dispatch` auto-dis
 
 Or add manually: `/dispatch "add gpt-5.3 to my config"`
 
-## Worker IPC
-
-Workers can ask clarification questions **without exiting**. When a worker hits a blocker, it surfaces the question to you. After you answer, the worker picks up where it left off with full context preserved. If you're away, it saves context and marks the item `[?]` for later.
-
 ## Plan markers
 
 | Marker | Meaning |
@@ -88,7 +115,9 @@ Workers can ask clarification questions **without exiting**. When a worker hits 
 
 ## Host compatibility
 
-Works in **Claude Code** and **Cursor**. The worker can be any CLI that accepts a prompt — Claude Code, Cursor CLI, Codex CLI, or anything you define in config.
+**Host (the session where you type `/dispatch`):** Claude Code or Cursor.
+
+**Workers (background agents that execute subtasks):** Any CLI that accepts a prompt — Claude Code, Cursor CLI, Codex CLI, or anything you define in config.
 
 ## Cleanup
 
