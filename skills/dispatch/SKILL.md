@@ -209,51 +209,39 @@ Rules for writing plans:
 - Each item should be a **concrete, verifiable action** (not vague like "review code").
 - 3-8 items is the sweet spot. Too few = no visibility. Too many = micromanagement.
 - The last item should always produce an output artifact (a summary, a report, a file).
-- Use the Write tool to create the plan file.
+- Use the Write tool to create the plan file. This is the ONE artifact the user should see in detail — it tells them what the worker will do.
 
-After creating the plan file, create the IPC directory:
-```bash
-mkdir -p .dispatch/tasks/<task-id>/ipc
-```
+## Step 2: Set Up and Spawn
 
-## Step 2: Spawn the Worker and Sentinel
+### UX principle
 
-**IMPORTANT: Always write the worker prompt to a temp file first, then pass it via `$(cat /path/to/file)`.** Inline heredocs in background Bash tasks cause severe startup delays due to shell escaping overhead.
+**Minimize user-visible tool calls.** The plan file (Step 1) is the only artifact users need to see in detail. Prompt files, wrapper scripts, sentinel scripts, and IPC directories are implementation scaffolding — create them all in a **single Bash call** using heredocs, never as individual Write calls. Use a clear Bash `description` (e.g., "Set up dispatch scaffolding for security-review").
 
 ### Dispatch procedure:
 
-1. Write the worker prompt to a temp file using the Write tool:
-   - Path: `/tmp/dispatch-<task-id>-prompt.txt`
-   - If the resolved model came from an alias with a `prompt` addition, **prepend** that prompt text before the standard worker prompt template.
+1. **Create all scaffolding in one Bash call.** This single call must:
+   - `mkdir -p .dispatch/tasks/<task-id>/ipc`
+   - Write the worker prompt to `/tmp/dispatch-<task-id>-prompt.txt` (see Worker Prompt Template below). If the resolved model came from an alias with a `prompt` addition, prepend that text.
+   - Write the wrapper script to `/tmp/worker--<task-id>.sh`. Construct the command from config: resolve model → look up backend → get command template. If backend is `cursor`: append `--model <model-id>`. If backend is `claude`: do NOT append `--model`. The script runs: `<command> "$(cat /tmp/dispatch-<task-id>-prompt.txt)" 2>&1`
+   - Write the sentinel script to `/tmp/sentinel--<task-id>.sh`. It polls the IPC directory for unanswered `.question` files and exits when one is found (triggering a `<task-notification>`).
+   - `chmod +x` both scripts.
 
-2. Write a wrapper script using the Write tool:
-   - Path: `/tmp/worker--<task-id>.sh`
-   - Construct the command dynamically from the config:
-     a. Resolve the model (from user prompt, alias, or default)
-     b. Look up the model's `backend` in config
-     c. Get the backend's `command` template
-     d. If backend is `cursor`: append `--model <model-id>`. If backend is `claude`: do NOT append `--model`.
-     e. Append `"$(cat /tmp/dispatch-<task-id>-prompt.txt)" 2>&1`
+   For **multiple parallel tasks**, combine ALL tasks' scaffolding into this single Bash call.
 
-   Example wrapper script for a cursor-backend model:
+   Example (single task, claude backend):
    ```bash
+   # description: "Set up dispatch scaffolding for security-review"
+   mkdir -p .dispatch/tasks/security-review/ipc
+   cat > /tmp/dispatch-security-review-prompt.txt << 'PROMPT'
+   <worker prompt content>
+   PROMPT
+   cat > /tmp/worker--security-review.sh << 'WORKER'
    #!/bin/bash
-   agent -p --force --workspace "$(pwd)" --model gpt-5.3-codex "$(cat /tmp/dispatch-<task-id>-prompt.txt)" 2>&1
-   ```
-
-   Example wrapper script for a claude-backend model:
-   ```bash
+   env -u CLAUDE_CODE_ENTRYPOINT -u CLAUDECODE claude -p --dangerously-skip-permissions "$(cat /tmp/dispatch-security-review-prompt.txt)" 2>&1
+   WORKER
+   cat > /tmp/sentinel--security-review.sh << 'SENTINEL'
    #!/bin/bash
-   env -u CLAUDE_CODE_ENTRYPOINT -u CLAUDECODE claude -p --dangerously-skip-permissions "$(cat /tmp/dispatch-<task-id>-prompt.txt)" 2>&1
-   ```
-
-3. Write the sentinel script using the Write tool:
-   - Path: `/tmp/sentinel--<task-id>.sh`
-   - The sentinel watches the IPC directory for unanswered questions and exits when one is found, triggering a `<task-notification>` to the dispatcher.
-
-   ```bash
-   #!/bin/bash
-   IPC_DIR=".dispatch/tasks/<task-id>/ipc"
+   IPC_DIR=".dispatch/tasks/security-review/ipc"
    shopt -s nullglob
    while true; do
      for q in "$IPC_DIR"/*.question; do
@@ -262,22 +250,29 @@ mkdir -p .dispatch/tasks/<task-id>/ipc
      done
      sleep 3
    done
+   SENTINEL
+   chmod +x /tmp/worker--security-review.sh /tmp/sentinel--security-review.sh
    ```
 
-4. Spawn both the worker and sentinel as separate background tasks.
-
-   **In Claude Code:** Use Bash with `run_in_background: true` for each:
+   Example (cursor backend — note `--model` flag):
    ```bash
-   bash /tmp/worker--<task-id>.sh
+   cat > /tmp/worker--code-review.sh << 'WORKER'
+   #!/bin/bash
+   agent -p --force --workspace "$(pwd)" --model gpt-5.3-codex "$(cat /tmp/dispatch-code-review-prompt.txt)" 2>&1
+   WORKER
+   ```
+
+2. **Spawn worker and sentinel as background tasks.** Launch both in a single message (parallel `run_in_background: true` calls) with clear descriptions:
+   ```bash
+   # description: "Run dispatch worker: security-review"
+   bash /tmp/worker--security-review.sh
    ```
    ```bash
-   bash /tmp/sentinel--<task-id>.sh
+   # description: "Run dispatch sentinel: security-review"
+   bash /tmp/sentinel--security-review.sh
    ```
-   This gives the user readable labels in the status bar (e.g., `worker--security-review.sh`, `sentinel--security-review.sh`).
 
-   **In Cursor / other hosts:** Run with `& disown` or use whatever background execution mechanism your host provides.
-
-   **Record both task IDs** — you need them to distinguish worker vs sentinel notifications later.
+   **Record both task IDs internally** — you need them to distinguish worker vs sentinel notifications. **Do NOT report these IDs to the user** (they are implementation details).
 
 ### Worker Prompt Template
 
@@ -310,13 +305,15 @@ Short, descriptive, kebab-case: `security-review`, `add-auth`, `fix-login-bug`.
 
 ## Step 3: Report and Return Control
 
-After dispatching, tell the user:
-- The task ID
-- The worker background task ID (from Bash)
-- The sentinel background task ID (from Bash)
-- Which model was used (and backend)
+After dispatching, tell the user **only what matters**:
+- Which task was dispatched (the task ID)
+- Which model is running it
 - A brief summary of the plan (the checklist items)
 - Then **stop and wait**
+
+Keep the output clean. Example: "Dispatched `security-review` using opus. Plan: 1) Scan for secrets 2) Review auth logic ..."
+
+**Do NOT** report worker/sentinel background task IDs, backend names, script paths, or other implementation details to the user.
 
 ## Checking Progress
 
@@ -375,9 +372,8 @@ When the sentinel's `<task-notification>` arrives, a question is waiting. The wo
    mv .dispatch/tasks/<task-id>/ipc/001.answer.tmp .dispatch/tasks/<task-id>/ipc/001.answer
    ```
 6. Respawn the sentinel (the old one exited after detecting the question):
-   - Write a new `/tmp/sentinel--<task-id>.sh` (same script as before).
-   - Spawn it as a background task with `run_in_background: true`.
-   - Record the new sentinel task ID.
+   - The script at `/tmp/sentinel--<task-id>.sh` already exists — just re-spawn it with `run_in_background: true`.
+   - Record the new sentinel task ID internally (do not report it to the user).
 
 The worker detects the answer, writes `001.done`, and continues working — all without losing context.
 
@@ -483,12 +479,11 @@ Task files persist in `.dispatch/tasks/` for debugging and reference. The user c
 ```
 User: /dispatch "do a security review of this project"
 
-Dispatcher: [reads ~/.dispatch/config.yaml — default model: opus, backend: claude]
+Dispatcher: [reads ~/.dispatch/config.yaml — default model: opus]
 Dispatcher: [writes .dispatch/tasks/security-review/plan.md]
-Dispatcher: [mkdir -p .dispatch/tasks/security-review/ipc]
-Dispatcher: [writes /tmp/worker--security-review.sh, spawns bg_w123]
-Dispatcher: [writes /tmp/sentinel--security-review.sh, spawns bg_s456]
-Dispatcher: Dispatched `security-review` (worker: bg_w123, sentinel: bg_s456) using opus (claude). Plan:
+Dispatcher: [single Bash call: creates IPC dir, prompt file, wrapper script, sentinel script]
+Dispatcher: [spawns worker and sentinel as background tasks]
+Dispatcher: Dispatched `security-review` using opus. Plan:
   1. Scan for hardcoded secrets
   2. Review auth logic
   3. Check dependencies
@@ -496,7 +491,7 @@ Dispatcher: Dispatched `security-review` (worker: bg_w123, sentinel: bg_s456) us
   5. Write findings report
 What else?
 
-[<task-notification> for bg_w123 arrives]
+[<task-notification> arrives — worker finished]
 
 Dispatcher: [reads plan.md — all items checked]
 Dispatcher: `security-review` complete. Found 2 issues:
@@ -510,19 +505,19 @@ Full report at .dispatch/tasks/security-review/output.md
 ```
 User: /dispatch "implement the feature described in requirements.txt"
 
-Dispatcher: [dispatches worker bg_w789, sentinel bg_s012]
+Dispatcher: [writes plan, sets up scaffolding, spawns worker + sentinel]
+Dispatcher: Dispatched `impl-feature` using opus. Plan: ...
 
-[<task-notification> for bg_s012 arrives — sentinel detected a question]
+[<task-notification> arrives — sentinel detected a question]
 
 Dispatcher: [reads .dispatch/tasks/impl-feature/ipc/001.question]
 Dispatcher: Worker is asking: "requirements.txt doesn't exist. What feature should I implement?"
 User: Add a /health endpoint that returns JSON with uptime and version.
 
-Dispatcher: [writes 001.answer atomically]
-Dispatcher: [respawns sentinel as bg_s345]
+Dispatcher: [writes 001.answer atomically, respawns sentinel]
 Dispatcher: Answer sent. Worker is continuing.
 
-[<task-notification> for bg_w789 arrives — worker finished]
+[<task-notification> arrives — worker finished]
 
 Dispatcher: [reads plan.md — all items checked]
 Dispatcher: Done! /health endpoint implemented.
