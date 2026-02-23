@@ -159,8 +159,8 @@ Process old-format configs the same way as before: scan the prompt for agent nam
 1. **Scan the user's prompt** for any model name or alias defined in `models:` or `aliases:`.
 
 2. **If a model or alias is found:**
-   - For a model: look up its `backend`, get the backend's `command`, append `--model <model-id>`.
-   - For an alias: resolve to the underlying `model`, get the backend and command, append `--model <model-id>`. Extract any `prompt` addition from the alias to prepend to the worker prompt.
+   - For a model: look up its `backend`, get the backend's `command`. If the backend is `cursor`, append `--model <model-id>`. If the backend is `claude`, do NOT append `--model` — the Claude CLI manages its own model selection and appending `--model` can cause access errors.
+   - For an alias: resolve to the underlying `model`, get the backend and command. Apply the same backend-specific rule above. Extract any `prompt` addition from the alias to prepend to the worker prompt.
 
 3. **If the user references a model NOT in config:**
    - If Cursor CLI exists: run `agent models` to check availability. If found, auto-add to config with the appropriate backend and use it.
@@ -173,16 +173,23 @@ Process old-format configs the same way as before: scan the prompt for agent nam
 
 ### Command construction
 
-When dispatching with a model (e.g., `gpt-5.3-codex`):
-1. Look up model → `backend: cursor`
+**Cursor backend** — append `--model <model-id>`:
+1. Look up model (e.g., `gpt-5.3-codex`) → `backend: cursor`
 2. Look up backend → `agent -p --force --workspace "$(pwd)"`
 3. Append `--model gpt-5.3-codex` → final command:
    `agent -p --force --workspace "$(pwd)" --model gpt-5.3-codex`
 
+**Claude backend** — do NOT append `--model`:
+1. Look up model (e.g., `opus`) → `backend: claude`
+2. Look up backend → `env -u ... claude -p --dangerously-skip-permissions`
+3. Use the command as-is. The Claude CLI manages its own model selection.
+
+**Why no `--model` for Claude?** The Claude CLI resolves aliases like `opus` to specific versioned model IDs internally. This resolution can fail if the resolved version isn't available on the user's account. Omitting `--model` lets the CLI use its own default, which always works.
+
 For an alias (e.g., `security-reviewer`):
 1. Resolve alias → `model: opus`, extract `prompt:` addition
 2. Look up model → `backend: claude`
-3. Construct command: `env -u ... claude -p --dangerously-skip-permissions --model opus`
+3. Construct command: `env -u ... claude -p --dangerously-skip-permissions` (no `--model`)
 4. Prepend alias prompt to the worker's task prompt
 
 ## Step 1: Create the Plan File
@@ -225,7 +232,7 @@ mkdir -p .dispatch/tasks/<task-id>/ipc
      a. Resolve the model (from user prompt, alias, or default)
      b. Look up the model's `backend` in config
      c. Get the backend's `command` template
-     d. Append `--model <model-id>` to the command
+     d. If backend is `cursor`: append `--model <model-id>`. If backend is `claude`: do NOT append `--model`.
      e. Append `"$(cat /tmp/dispatch-<task-id>-prompt.txt)" 2>&1`
 
    Example wrapper script for a cursor-backend model:
@@ -237,7 +244,7 @@ mkdir -p .dispatch/tasks/<task-id>/ipc
    Example wrapper script for a claude-backend model:
    ```bash
    #!/bin/bash
-   env -u CLAUDE_CODE_ENTRYPOINT -u CLAUDECODE claude -p --dangerously-skip-permissions --model opus "$(cat /tmp/dispatch-<task-id>-prompt.txt)" 2>&1
+   env -u CLAUDE_CODE_ENTRYPOINT -u CLAUDECODE claude -p --dangerously-skip-permissions "$(cat /tmp/dispatch-<task-id>-prompt.txt)" 2>&1
    ```
 
 3. Write the sentinel script using the Write tool:

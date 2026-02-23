@@ -59,8 +59,10 @@ models:
   gemini-3.1-pro:  { backend: cursor }
 ```
 
-When dispatching with `gpt-5.3-codex`, the command becomes:
+When dispatching with `gpt-5.3-codex` (cursor backend), the command becomes:
 `agent -p --force --workspace "$(pwd)" --model gpt-5.3-codex`
+
+For Claude backend models (`opus`, `sonnet`, `haiku`), `--model` is **not** appended — the Claude CLI manages its own model selection.
 
 ### Aliases
 

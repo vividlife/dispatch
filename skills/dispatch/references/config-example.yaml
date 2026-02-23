@@ -7,7 +7,8 @@
 default: opus  # Default model (by name or alias)
 
 # Backends: CLI commands for each provider
-# The --model flag is appended automatically when dispatching.
+# For cursor backend: --model <id> is appended automatically when dispatching.
+# For claude backend: --model is NOT appended (CLI manages its own model selection).
 #
 # Cursor CLI flags:
 #   -p / --print     Non-interactive print mode
@@ -31,7 +32,8 @@ backends:
       agent -p --force --workspace "$(pwd)"
 
 # Models: each model maps to a backend.
-# The --model <id> flag is appended to the backend command automatically.
+# For cursor backend: --model <id> is appended to the command automatically.
+# For claude backend: the CLI uses its own default model (no --model appended).
 # Add or remove models freely — run `agent models` to see what's available.
 
 models:
