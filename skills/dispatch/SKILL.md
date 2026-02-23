@@ -265,6 +265,7 @@ Rules for writing plans:
    IPC_DIR=".dispatch/tasks/security-review/ipc"
    shopt -s nullglob
    while true; do
+     [ -f "$IPC_DIR/.done" ] && exit 0
      for q in "$IPC_DIR"/*.question; do
        seq=$(basename "$q" .question)
        [ ! -f "$IPC_DIR/${seq}.answer" ] && exit 0
@@ -315,7 +316,7 @@ If you need to ask the user a question, write it to .dispatch/tasks/{task-id}/ip
 
 If you hit an unresolvable error, mark the item [!] with a description and stop.
 
-When all items are checked, your work is done.
+When all items are checked, write a completion marker: touch .dispatch/tasks/{task-id}/ipc/.done — then your work is done.
 ~~~
 
 ### Context Block Guidance
