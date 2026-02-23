@@ -2,7 +2,7 @@
 
 ## Overview
 
-Dispatch is a skill (`/dispatch`) for Claude Code and compatible tools that decomposes large coding tasks into subtasks, dispatches them to background AI worker agents, and tracks progress via checklist-based plan files.
+Dispatch is a skill (`/dispatch`) for Claude Code that decomposes large coding tasks into subtasks, dispatches them to background AI worker agents, and tracks progress via checklist-based plan files.
 
 ## How It Works
 
