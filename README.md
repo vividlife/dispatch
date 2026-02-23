@@ -49,7 +49,7 @@ Mix models per task. Claude for deep reasoning, GPT for broad generation, Gemini
 
 ---
 
-> **Requires [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Cursor](https://docs.cursor.com/) as your host session.** Dispatch is a skill that runs _inside_ Claude Code or Cursor — the host plans tasks and spawns workers. Other CLIs like [Codex](https://github.com/openai/codex) work as **workers only** (background agents that execute subtasks). You cannot use dispatch with Codex alone.
+> **Requires [Claude Code](https://docs.anthropic.com/en/docs/claude-code) as your host session.** Dispatch is a skill that runs _inside_ Claude Code — the host plans tasks and spawns workers. Other CLIs like [Cursor](https://docs.cursor.com/) and [Codex](https://github.com/openai/codex) work as **workers only** (background agents that execute subtasks).
 
 ## Install
 

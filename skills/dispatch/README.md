@@ -12,7 +12,7 @@
 /dispatch "do a security review of this project"
 ```
 
-> **Host requirement:** Dispatch runs inside **Claude Code** or **Cursor** — one of these must be your active session. Other CLIs like Codex work as **workers only** (they execute subtasks in the background). Dispatch cannot run standalone with Codex or other worker-only CLIs.
+> **Host requirement:** Dispatch runs inside **Claude Code** — it must be your active session. Other CLIs like Cursor and Codex work as **workers only** (they execute subtasks in the background).
 
 ---
 
@@ -119,9 +119,9 @@ Or add manually: `/dispatch "add gpt-5.3 to my config"`
 
 ## Host compatibility
 
-**Host (the session where you type `/dispatch`):** Claude Code or Cursor.
+**Host (the session where you type `/dispatch`):** Claude Code.
 
-**Workers (background agents that execute subtasks):** Any CLI that accepts a prompt — Claude Code, Cursor CLI, Codex CLI, or anything you define in config.
+**Workers (background agents that execute subtasks):** Any CLI that accepts a prompt — Cursor CLI, Codex CLI, Claude Code, or anything you define in config.
 
 ## Cleanup
 
