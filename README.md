@@ -5,7 +5,7 @@
 `/dispatch` plans tasks as checklists, fans out to background workers — Claude, GPT, Gemini — and tracks progress. You stay in one clean session. Workers do the heavy lifting in isolated contexts.
 
 <p align="center">
-  <img src="skills/dispatch/assets/before-after.svg" alt="Before: developer juggling 6 terminal tabs with separate AI agents, arrows crossing everywhere. After: one session delegates to a dispatcher that fans out to workers with a clean feedback loop." width="900" />
+  <img src="skills/dispatch/assets/before-after.svg" alt="Architecture diagram: Your Session sends a task to the Dispatcher, which fans out to Opus, Sonnet, and Haiku workers in parallel, with a feedback loop for questions and progress. Also supports GPT, Gemini, and other models." width="900" />
 </p>
 
 ```
