@@ -281,55 +281,28 @@ mkdir -p .dispatch/tasks/<task-id>/ipc
 
 ### Worker Prompt Template
 
-Write this to the temp file, replacing `{task-id}` with the actual task ID:
+Write this to the temp file, replacing `{task-id}` with the actual task ID. Append the **Context block** (see below) before the closing line.
 
 ~~~
 You have a plan file at .dispatch/tasks/{task-id}/plan.md containing a checklist.
-Work through it top to bottom. For each item:
+Work through it top to bottom. For each item, do the work, update the plan file ([ ] → [x] with an optional note), and move to the next.
 
-1. Do the work described.
-2. Update the plan file: change `- [ ]` to `- [x]` for that item.
-3. Optionally add a brief note on a new line below the item (indented with two spaces).
-4. Move to the next item.
+If you need to ask the user a question, write it to .dispatch/tasks/{task-id}/ipc/<NNN>.question (atomic write via temp file + mv; sequence from 001). Poll for a matching .answer file. When you receive the answer, write a .done marker and continue. If no answer arrives within 3 minutes, write your context to .dispatch/tasks/{task-id}/context.md, mark the item [?] with the question, and stop.
 
-## Asking questions (IPC)
-
-If you hit a blocker — something ambiguous, a missing dependency, a question only
-a human can answer — use the IPC system to ask:
-
-1. Determine the next sequence number by counting existing .question files in
-   .dispatch/tasks/{task-id}/ipc/ and adding 1 (first question = 001).
-2. Write your question to a temp file, then move it atomically:
-   ```
-   echo "Your question here" > .dispatch/tasks/{task-id}/ipc/001.question.tmp
-   mv .dispatch/tasks/{task-id}/ipc/001.question.tmp .dispatch/tasks/{task-id}/ipc/001.question
-   ```
-3. Poll for the answer (the dispatcher will write it after asking the user):
-   ```
-   while [ ! -f .dispatch/tasks/{task-id}/ipc/001.answer ]; do sleep 5; done
-   ```
-4. Read the answer from .dispatch/tasks/{task-id}/ipc/001.answer.
-5. Write a done marker so the dispatcher knows you received it:
-   ```
-   touch .dispatch/tasks/{task-id}/ipc/001.done
-   ```
-6. Continue working with the answer.
-
-Timeout: if no answer arrives after 3 minutes of polling (36 retries at 5s each),
-fall back to the legacy behavior:
-1. Write your current context and findings to .dispatch/tasks/{task-id}/context.md.
-2. Update the blocked item to `- [?]` with the question.
-3. STOP.
-
-This preserves your context for the next worker even if IPC fails.
-
-## Errors
-
-If you encounter an error you cannot resolve, update the item to `- [!]` with an
-error description, then STOP.
+If you hit an unresolvable error, mark the item [!] with a description and stop.
 
 When all items are checked, your work is done.
 ~~~
+
+### Context Block Guidance
+
+The dispatcher writes a `Context:` section in the worker prompt before the closing line. When writing this:
+
+- **State the outcome** the user asked for, in their words. Don't rephrase into implementation steps.
+- **List reference files** the worker needs to read (if any).
+- **State constraints** that aren't obvious (e.g., "prefer main's content on conflicts", "read-only — don't modify source").
+- **Don't teach tools.** Don't explain how to use `gh`, `git`, `grep`, etc. The worker model knows its tools.
+- **Don't specify implementation.** Say "merge the open docs PRs" not "run `gh pr merge <number> --merge`".
 
 ### Task IDs
 
