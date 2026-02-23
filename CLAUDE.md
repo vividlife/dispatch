@@ -18,7 +18,7 @@ Claude Code (dispatcher session)
   |- Reads ~/.dispatch/config.yaml (or runs first-run setup)
   |- Creates plan file (.dispatch/tasks/<id>/plan.md) with checklist
   |- Creates IPC directory (.dispatch/tasks/<id>/ipc/)
-  |- Resolves model → backend → command (appends --model flag for cursor backend only)
+  |- Resolves model → backend → command (appends --model flag for cursor/codex backends)
   |- Writes wrapper script to /tmp/worker--<id>.sh, spawns it as background task
   |- Writes sentinel script to /tmp/sentinel--<id>.sh, spawns it as background task
   |- Worker checks off items in plan.md as it completes them
@@ -59,12 +59,15 @@ backends:
   cursor:
     command: >
       agent -p --force --workspace "$(pwd)"
+  codex:
+    command: >
+      codex exec --full-auto -C "$(pwd)"
 
 models:
   opus:            { backend: claude }
   sonnet:          { backend: claude }
   haiku:           { backend: claude }
-  gpt-5.3-codex:  { backend: cursor }
+  gpt-5.3-codex:  { backend: codex }
   gemini-3.1-pro:  { backend: cursor }
 
 aliases:
@@ -79,15 +82,22 @@ aliases:
 ### How commands are constructed
 
 **Cursor backend** — append `--model`:
-1. Look up model (e.g., `gpt-5.3-codex`) → `backend: cursor`
+1. Look up model (e.g., `gemini-3.1-pro`) → `backend: cursor`
 2. Look up backend → `agent -p --force --workspace "$(pwd)"`
-3. Append `--model gpt-5.3-codex` → final command
+3. Append `--model gemini-3.1-pro` → final command
 
 **Claude backend** — do NOT append `--model`:
 1. Look up model (e.g., `opus`, or a versioned ID like `sonnet-4.6`) → `backend: claude`
 2. Use the backend command as-is. The Claude CLI manages its own model selection. Appending `--model` can cause access errors due to internal alias resolution.
 
+**Codex backend** — append `--model`:
+1. Look up model (e.g., `gpt-5.3-codex`) → `backend: codex`
+2. Look up backend → `codex exec --full-auto -C "$(pwd)"`
+3. Append `--model gpt-5.3-codex` → final command
+
 > **Claude model detection:** Any model ID containing `opus`, `sonnet`, or `haiku` — including versioned variants (e.g., `sonnet-4.6`, `opus-4.5-thinking`) — is a Claude model and must use `backend: claude` when the Claude Code CLI is available. Never route Claude models through the cursor backend.
+
+> **OpenAI model detection:** Any model ID containing `gpt`, `codex`, `o1`, `o3`, or `o4-mini` is an OpenAI model and must use `backend: codex` when the Codex CLI is available. Only fall back to `cursor` backend when Codex is not installed.
 
 For aliases, the alias's `model` is resolved the same way, and any `prompt` addition is prepended to the worker prompt.
 
@@ -98,7 +108,7 @@ Old `agents:` config format is still recognized. Each agent entry is treated as 
 ## Key Patterns
 
 - **Checklist-as-state**: The plan file IS the progress tracker. `[x]` = done, `[ ]` = pending, `[?]` = blocked, `[!]` = error. The dispatcher reads it to report progress without needing signal files or polling.
-- **Model-centric config**: Backends define CLI commands once; models map to backends. For the Cursor backend, `--model` is appended automatically. For the Claude backend, `--model` is omitted (the CLI manages its own model selection). Adding a model is one line.
+- **Model-centric config**: Backends define CLI commands once; models map to backends. For the Cursor and Codex backends, `--model` is appended automatically. For the Claude backend, `--model` is omitted (the CLI manages its own model selection). Adding a model is one line.
 - **First-run setup**: On first use (no config file), the dispatcher detects CLIs, discovers available models via `agent models`, presents options via AskUserQuestion, and generates the config. No manual YAML writing needed.
 - **Smart model resolution**: If a user references a model not in config, the dispatcher probes availability (`agent models`), auto-adds it, and dispatches — no config editing needed.
 - **Aliases with prompt additions**: Named shortcuts (e.g., `security-reviewer`) that resolve to a model and optionally prepend role-specific instructions to the worker prompt.

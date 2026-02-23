@@ -27,6 +27,7 @@ Triggered when `~/.dispatch/config.yaml` does not exist (checked in Step 0 or Mo
 ```bash
 which agent 2>/dev/null  # Cursor CLI
 which claude 2>/dev/null  # Claude Code
+which codex 2>/dev/null  # Codex CLI (OpenAI)
 ```
 
 ### 2. Discover models
@@ -44,17 +45,24 @@ Strategy depends on what CLIs are available:
 - Use stable aliases: `opus`, `sonnet`, `haiku`. These auto-resolve to the latest version (e.g., `opus` → `claude-opus-4-6` today, and will resolve to newer versions as they release).
 - This is intentionally version-agnostic — no hardcoded version numbers that go stale.
 
-**If both are available:**
-- Use `agent models` as primary source (it's comprehensive).
+**If Codex CLI is available:**
+- Codex has no `codex models` command. Use a curated set of known model IDs: `gpt-5.3-codex`, `gpt-5.3-codex-spark`, `gpt-5.2`.
+- OpenAI models (IDs containing `gpt`, `codex`, `o1`, `o3`, `o4-mini`) should prefer the `codex` backend when available.
+- If Cursor CLI is also available, `agent models` may list OpenAI models — prefer routing those through `codex` when the Codex CLI is installed.
+
+**If multiple CLIs are available:**
+- Use `agent models` as primary source for model discovery (it's comprehensive).
 - Additionally note Claude Code is available as a backend for Claude models.
+- Additionally note Codex is available as a backend for OpenAI models.
+- Prefer native backends: Claude models → `claude` backend, OpenAI models → `codex` backend.
 
 **If neither is found:**
-- Tell the user: "No worker CLI found. Install the Cursor CLI (`agent`) or Claude Code CLI (`claude`), or create a config at `~/.dispatch/config.yaml`."
+- Tell the user: "No worker CLI found. Install the Cursor CLI (`agent`), Claude Code CLI (`claude`), or Codex CLI (`codex`), or create a config at `~/.dispatch/config.yaml`."
 - Show them the example config at `${SKILL_DIR}/references/config-example.yaml` and stop.
 
 ### 3. Present findings via AskUserQuestion
 
-- Show a summary: "Found Cursor CLI with N models" / "Found Claude Code"
+- Show a summary: "Found Cursor CLI with N models" / "Found Claude Code" / "Found Codex CLI"
 - List a few notable models (top models from each provider — don't dump 30+ models)
 - Ask: "Which model should be your default?"
 - Offer 3-4 sensible choices (e.g., the current Cursor default, opus, sonnet, a GPT option)
@@ -74,14 +82,17 @@ backends:
   cursor:
     command: >
       agent -p --force --workspace "$(pwd)"
+  codex:
+    command: >
+      codex exec --full-auto -C "$(pwd)"
 
 models:
   # Claude
   opus:          { backend: claude }
   sonnet:        { backend: claude }
   haiku:         { backend: claude }
-  # GPT
-  gpt-5.3-codex: { backend: cursor }
+  # GPT / OpenAI
+  gpt-5.3-codex: { backend: codex }
   # ... all detected models grouped by provider
 ```
 
@@ -89,6 +100,7 @@ Rules:
 - Include **all** detected models — they're one-liners and it's better to have them available than to require re-discovery.
 - **Group by provider** with YAML comments for readability (`# Claude`, `# GPT`, `# Gemini`, etc.).
 - **Claude model detection:** Any model ID containing `opus`, `sonnet`, or `haiku` (including versioned variants like `sonnet-4.6`, `opus-4.5-thinking`, etc.) is a Claude model. When the Claude Code CLI is available, ALL Claude models must use `backend: claude`. Never route Claude models through the cursor backend — the Claude CLI manages model selection natively and doesn't need `--model`.
+- **OpenAI model detection:** Any model ID containing `gpt`, `codex`, `o1`, `o3`, or `o4-mini` is an OpenAI model. When the Codex CLI is available, ALL OpenAI models must use `backend: codex`. Only fall back to `cursor` backend for OpenAI models when Codex is not installed.
 - Only include backends that were actually detected.
 - Set user's chosen default.
 - Run `mkdir -p ~/.dispatch` then write the file.
@@ -159,17 +171,20 @@ Process old-format configs the same way as before: scan the prompt for agent nam
 1. **Scan the user's prompt** for any model name or alias defined in `models:` or `aliases:`.
 
 2. **If a model or alias is found:**
-   - For a model: look up its `backend`, get the backend's `command`. If the backend is `cursor`, append `--model <model-id>`. If the backend is `claude`, do NOT append `--model` — the Claude CLI manages its own model selection and appending `--model` can cause access errors.
+   - For a model: look up its `backend`, get the backend's `command`. If the backend is `cursor` or `codex`, append `--model <model-id>`. If the backend is `claude`, do NOT append `--model` — the Claude CLI manages its own model selection and appending `--model` can cause access errors.
    - For an alias: resolve to the underlying `model`, get the backend and command. Apply the same backend-specific rule above. Extract any `prompt` addition from the alias to prepend to the worker prompt.
 
 3. **If the user references a model NOT in config:**
-   - If Cursor CLI exists: run `agent models` to check availability. If found, auto-add to config with the appropriate backend and use it.
+   - If Cursor CLI exists: run `agent models` to check availability. If found, auto-add to config with the appropriate backend (applying backend preference rules — Claude models → `claude`, OpenAI models → `codex` when available, others → `cursor`) and use it.
    - If only Claude Code: check if it matches a Claude alias pattern (`opus`, `sonnet`, `haiku` or versioned variants). If yes, auto-add with `claude` backend.
-   - If not found anywhere, tell the user: "Model X isn't available. Run `agent models` to see what's available, or check your Cursor/Claude subscription."
+   - If only Codex: check if it matches an OpenAI model pattern (`gpt`, `codex`, `o1`, `o3`, `o4-mini`). If yes, auto-add with `codex` backend.
+   - If not found anywhere, tell the user: "Model X isn't available. Run `agent models` to see what's available, or check your Cursor/Claude/OpenAI subscription."
 
 4. **If no model mentioned:** use the model specified in `default`.
 
-5. **Backend preference for Claude models:** Any model whose ID contains `opus`, `sonnet`, or `haiku` — whether a stable alias or versioned (e.g., `sonnet-4.6`, `opus-4.5-thinking`) — MUST use the `claude` backend when available. Never route Claude models through cursor.
+5. **Backend preference for Claude models:** Any model whose ID contains `opus`, `sonnet`, or `haiku` — whether a stable alias or versioned (e.g., `sonnet-4.6`, `opus-4.5-thinking`) — MUST use the `claude` backend when available. Never route Claude models through cursor or codex.
+
+6. **Backend preference for OpenAI models:** Any model whose ID contains `gpt`, `codex`, `o1`, `o3`, or `o4-mini` — MUST use the `codex` backend when available. Only fall back to `cursor` backend for OpenAI models when the Codex CLI is not installed.
 
 ### Command construction
 
@@ -183,6 +198,12 @@ Process old-format configs the same way as before: scan the prompt for agent nam
 1. Look up model (e.g., `opus`) → `backend: claude`
 2. Look up backend → `env -u ... claude -p --dangerously-skip-permissions`
 3. Use the command as-is. The Claude CLI manages its own model selection.
+
+**Codex backend** — append `--model <model-id>`:
+1. Look up model (e.g., `gpt-5.3-codex`) → `backend: codex`
+2. Look up backend → `codex exec --full-auto -C "$(pwd)"`
+3. Append `--model gpt-5.3-codex` → final command:
+   `codex exec --full-auto -C "$(pwd)" --model gpt-5.3-codex`
 
 **Why no `--model` for Claude?** The Claude CLI resolves aliases like `opus` to specific versioned model IDs internally. This resolution can fail if the resolved version isn't available on the user's account. Omitting `--model` lets the CLI use its own default, which always works.
 
@@ -222,7 +243,7 @@ Rules for writing plans:
 1. **Create all scaffolding in one Bash call.** This single call must:
    - `mkdir -p .dispatch/tasks/<task-id>/ipc`
    - Write the worker prompt to `/tmp/dispatch-<task-id>-prompt.txt` (see Worker Prompt Template below). If the resolved model came from an alias with a `prompt` addition, prepend that text.
-   - Write the wrapper script to `/tmp/worker--<task-id>.sh`. Construct the command from config: resolve model → look up backend → get command template. If backend is `cursor`: append `--model <model-id>`. If backend is `claude`: do NOT append `--model`. The script runs: `<command> "$(cat /tmp/dispatch-<task-id>-prompt.txt)" 2>&1`
+   - Write the wrapper script to `/tmp/worker--<task-id>.sh`. Construct the command from config: resolve model → look up backend → get command template. If backend is `cursor` or `codex`: append `--model <model-id>`. If backend is `claude`: do NOT append `--model`. The script runs: `<command> "$(cat /tmp/dispatch-<task-id>-prompt.txt)" 2>&1`
    - Write the sentinel script to `/tmp/sentinel--<task-id>.sh`. It polls the IPC directory for unanswered `.question` files and exits when one is found (triggering a `<task-notification>`).
    - `chmod +x` both scripts.
 
@@ -259,6 +280,14 @@ Rules for writing plans:
    cat > /tmp/worker--code-review.sh << 'WORKER'
    #!/bin/bash
    agent -p --force --workspace "$(pwd)" --model gpt-5.3-codex "$(cat /tmp/dispatch-code-review-prompt.txt)" 2>&1
+   WORKER
+   ```
+
+   Example (codex backend — note `--model` flag, same pattern as cursor):
+   ```bash
+   cat > /tmp/worker--code-review.sh << 'WORKER'
+   #!/bin/bash
+   codex exec --full-auto -C "$(pwd)" --model gpt-5.3-codex "$(cat /tmp/dispatch-code-review-prompt.txt)" 2>&1
    WORKER
    ```
 
@@ -434,10 +463,11 @@ When a worker fails to start or errors immediately:
    ```bash
    which agent 2>/dev/null
    which claude 2>/dev/null
+   which codex 2>/dev/null
    ```
 
 2. **If the CLI is gone or auth fails:**
-   - Tell the user: "The [cursor/claude] CLI is no longer available."
+   - Tell the user: "The [cursor/claude/codex] CLI is no longer available."
    - List alternative models/backends still available in the config.
    - Ask: "Want me to switch your default and retry with [alternative]?"
 
@@ -446,7 +476,7 @@ When a worker fails to start or errors immediately:
    - Re-dispatch the task with the new model.
 
 4. **If no alternatives exist:**
-   - Tell the user to install a CLI or fix their auth, and stop.
+   - Tell the user to install a CLI (`agent`, `claude`, or `codex`) or fix their auth, and stop.
 
 ## Parallel Tasks
 
