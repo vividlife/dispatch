@@ -184,9 +184,13 @@ Process old-format configs the same way as before: scan the prompt for agent nam
 
 4. **If no model mentioned:** use the model specified in `default`.
 
-5. **Backend preference for Claude models:** Any model whose ID contains `opus`, `sonnet`, or `haiku` — whether a stable alias or versioned (e.g., `sonnet-4.6`, `opus-4.5-thinking`) — MUST use the `claude` backend when available. Never route Claude models through cursor or codex.
+5. **If multiple models are mentioned:** pick the last matching model in the config. If the prompt is genuinely ambiguous (e.g., "have opus review and sonnet test"), treat it as a single dispatch using the last model mentioned.
 
-6. **Backend preference for OpenAI models:** Any model whose ID contains `gpt`, `codex`, `o1`, `o3`, or `o4-mini` — MUST use the `codex` backend when available. Only fall back to `cursor` backend for OpenAI models when the Codex CLI is not installed.
+6. **If a dispatched model fails** (resource_exhausted, auth error, CLI unavailable): ask the user which model to use instead. Based on their answer, update `~/.dispatch/config.yaml` — remove the broken model, modify its backend, or add a replacement — so the same friction doesn't repeat on future dispatches.
+
+7. **Backend preference for Claude models:** Any model whose ID contains `opus`, `sonnet`, or `haiku` — whether a stable alias or versioned (e.g., `sonnet-4.6`, `opus-4.5-thinking`) — MUST use the `claude` backend when available. Never route Claude models through cursor or codex.
+
+8. **Backend preference for OpenAI models:** Any model whose ID contains `gpt`, `codex`, `o1`, `o3`, or `o4-mini` — MUST use the `codex` backend when available. Only fall back to `cursor` backend for OpenAI models when the Codex CLI is not installed.
 
 ### Command construction
 
@@ -265,6 +269,8 @@ Rules for writing plans:
    cat > /tmp/monitor--security-review.sh << 'MONITOR'
    #!/bin/bash
    IPC_DIR=".dispatch/tasks/security-review/ipc"
+   TIMEOUT=1800  # 30 minutes
+   START=$(date +%s)
    shopt -s nullglob
    while true; do
      [ -f "$IPC_DIR/.done" ] && exit 0
@@ -272,6 +278,8 @@ Rules for writing plans:
        seq=$(basename "$q" .question)
        [ ! -f "$IPC_DIR/${seq}.answer" ] && exit 0
      done
+     ELAPSED=$(( $(date +%s) - START ))
+     [ "$ELAPSED" -ge "$TIMEOUT" ] && exit 1
      sleep 3
    done
    MONITOR
