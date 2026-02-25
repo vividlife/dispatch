@@ -120,7 +120,7 @@ All running in background. I'll notify you as workers complete or if any
 ask questions. Say "status" anytime to check progress.
 ```
 
-Five workers, three models, three worktrees — your session wrote five checklists and is idle. You're free to keep coding.
+Five workers, three models, three worktrees — your session wrote five checklists and is idle. Dispatch more work or say "status" anytime.
 
 ## Setup
 
